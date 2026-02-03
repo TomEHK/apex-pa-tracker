@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>APEX PA Tracker（完整版）</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0b0f17">
+
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", Arial; }
+    body { margin: 0; background: #0b0f17; color: #e8eefc; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 860px){ .grid { grid-template-columns: 1.1fr .9fr; } }
+    .card {
+      background: #111a2b; border: 1px solid #22304e; border-radius: 14px;
+      padding: 14px; box-shadow: 0 10px 20px rgba(0,0,0,.25);
+    }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    label { font-size: 12px; opacity: .9; display: block; margin-bottom: 6px; }
+    input, button {
+      background: #0b1322; border: 1px solid #2a3a60; color: #e8eefc;
+      border-radius: 10px; padding: 10px 10px; font-size: 14px;
+      outline: none;
+    }
+    input:focus { border-color: #4b7bff; }
+    button { cursor: pointer; border-color: #3a5290; }
+    button.primary { background: #2446ff; border-color: #2446ff; }
+    button.danger { background: #ff2d55; border-color: #ff2d55; }
+    button.ghost { background: transparent; }
+    .kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .kpi .box { background: #0b1322; border: 1px solid #22304e; border-radius: 12px; padding: 10px; }
+    .kpi .val { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .muted { opacity: .8; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #22304e; font-size: 13px; }
+    th { text-align: left; font-size: 12px; opacity: .85; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #22304e; background: #0b1322;}
+    .ok { border-color: #2ecc71; }
+    .warn { border-color: #f1c40f; }
+    .bad { border-color: #ff3b30; }
+    .hint { line-height: 1.55; font-size: 13px; }
+    .split { display:flex; gap:10px; flex-wrap:wrap; }
+    .split > div { flex: 1 1 180px; }
+    .right { text-align: right; }
+    .progress { height: 10px; background:#0b1322; border:1px solid #22304e; border-radius:999px; overflow:hidden; }
+    .bar { height:100%; background:#2446ff; width:0%; }
+    .bar2 { height:100%; background:#2ecc71; width:0%; }
+    .mini { margin-top:8px; }
+    .topline { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items: baseline; }
+    .small { font-size: 12px; opacity: .85; }
+    .toast { margin-top:10px; font-size:12px; opacity:.85; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; padding:2px 6px; border:1px solid #22304e; border-radius:8px; background:#0b1322; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topline">
+      <h1>APEX PA Tracker（30% 規則 + 8日/5日進度）</h1>
+      <div class="small">
+        提示：用 <span class="kbd">+300</span> / <span class="kbd">-250</span> 記錄每日淨 profit
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Input / Settings -->
+      <div class="card">
+        <div class="row">
+          <div>
+            <label>日期</label>
+            <input id="date" type="date" />
+          </div>
+          <div>
+            <label>當日淨 Profit（可正可負，例如 250 / -180）</label>
+            <input id="profit" type="number" step="0.01" placeholder="例如 220 或 -250" />
+          </div>
+          <div>
+            <button class="primary" id="addBtn">加入</button>
+          </div>
+          <div>
+            <button class="ghost" id="cancelEditBtn">取消編輯</button>
+          </div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid #22304e;margin:14px 0;opacity:.8">
+
+        <div class="row">
+          <div>
+            <label>目標總 Profit（50K PA 常用 2600）</label>
+            <input id="targetProfit" type="number" step="1" value="2600" />
+          </div>
+          <div>
+            <label>Consistency 上限（%）</label>
+            <input id="rulePct" type="number" step="0.1" value="30" />
+          </div>
+          <div>
+            <label>Minimum Trading Days（通常 8）</label>
+            <input id="minDays" type="number" step="1" value="8" />
+          </div>
+          <div>
+            <label>≥$50 Profit Days（通常 5）</label>
+            <input id="min50Days" type="number" step="1" value="5" />
+          </div>
+          <div>
+            <button id="saveSettingsBtn">儲存設定</button>
+          </div>
+        </div>
+
+        <p class="muted" style="margin:10px 0 0;">
+          ✅ 自動保存到本機（localStorage）。同一部機/同一個瀏覽器會一直保留。
+        </p>
+        <div class="toast muted" id="pwaStatus"></div>
+      </div>
+
+      <!-- KPIs / Guidance -->
+      <div class="card">
+        <div class="kpi">
+          <div class="box">
+            <div class="muted">累計 Profit</div>
+            <div class="val" id="kpiTotal">$0</div>
+          </div>
+          <div class="box">
+            <div class="muted">最大單日 Profit</div>
+            <div class="val" id="kpiMaxDay">$0</div>
+          </div>
+          <div class="box">
+            <div class="muted">最大單日佔比（Max / Total）</div>
+            <div class="val" id="kpiPct">0%</div>
+          </div>
+          <div class="box">
+            <div class="muted">目標下可容許最大單日</div>
+            <div class="val" id="kpiAllowed">$0</div>
+          </div>
+        </div>
+
+        <div class="mini">
+          <div class="muted">Trading Days 進度</div>
+          <div class="progress" title="Trading Days">
+            <div class="bar" id="barDays"></div>
+          </div>
+          <div class="muted" style="margin-top:6px;">≥$50 Days 進度</div>
+          <div class="progress" title="≥$50 Days">
+            <div class="bar2" id="bar50"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;" id="statusWrap"></div>
+
+        <hr style="border:0;border-top:1px solid #22304e;margin:14px 0;opacity:.8">
+
+        <div class="hint" id="nextSteps"></div>
+      </div>
+    </div>
+
+    <!-- Records -->
+    <div class="card" style="margin-top:12px;">
+      <div class="row" style="justify-content: space-between;">
+        <div class="muted">紀錄（可編輯/刪除）</div>
+        <div class="row">
+          <button class="danger" id="resetBtn">清空全部</button>
+        </div>
+      </div>
+
+      <div style="overflow:auto; margin-top:8px;">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width:120px;">日期</th>
+              <th>當日 Profit</th>
+              <th>累計 Profit</th>
+              <th>最大日佔比（跑緊）</th>
+              <th class="right">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:12px;">
+      ⚠️ 呢個工具幫你做「30% 一致性 + 日數進度」保守風控。最終請以你平台/儀表板規則為準。
+    </p>
+  </div>
+
+<script>
+  // ---------- Utilities ----------
+  const money = (n) => {
+    const x = Number(n || 0);
+    const sign = x < 0 ? "-" : "";
+    const abs = Math.abs(x);
+    return sign + "$" + abs.toLocaleString(undefined, {maximumFractionDigits: 2});
+  };
+  const pct = (n) => (isFinite(n) ? (n*100).toFixed(1) + "%" : "0%");
+  const byDate = (a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+
+  // ---------- Storage ----------
+  const KEY = "apex_pa_tracker_pwa_rows_v1";
+  const SETTINGS_KEY = "apex_pa_tracker_pwa_settings_v1";
+
+  const loadRows = () => {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+    catch { return []; }
+  };
+  const saveRows = (r) => localStorage.setItem(KEY, JSON.stringify(r));
+
+  const loadSettings = () => {
+    try {
+      return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {
+        targetProfit: 2600, rulePct: 30, minDays: 8, min50Days: 5
+      };
+    } catch {
+      return { targetProfit: 2600, rulePct: 30, minDays: 8, min50Days: 5 };
+    }
+  };
+  const saveSettings = (s) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+
+  // ---------- State ----------
+  let rows = loadRows(); // [{date, profit}]
+  let editingDate = null;
+
+  // ---------- Elements ----------
+  const elDate = document.getElementById("date");
+  const elProfit = document.getElementById("profit");
+  const elTBody = document.getElementById("tbody");
+
+  const elTargetProfit = document.getElementById("targetProfit");
+  const elRulePct = document.getElementById("rulePct");
+  const elMinDays = document.getElementById("minDays");
+  const elMin50Days = document.getElementById("min50Days");
+
+  const kpiTotal = document.getElementById("kpiTotal");
+  const kpiMaxDay = document.getElementById("kpiMaxDay");
+  const kpiPctEl = document.getElementById("kpiPct");
+  const kpiAllowed = document.getElementById("kpiAllowed");
+
+  const statusWrap = document.getElementById("statusWrap");
+  const nextSteps = document.getElementById("nextSteps");
+
+  const barDays = document.getElementById("barDays");
+  const bar50 = document.getElementById("bar50");
+  const pwaStatus = document.getElementById("pwaStatus");
+
+  // ---------- Calculations ----------
+  function compute() {
+    const targetProfit = Number(elTargetProfit.value || 2600);
+    const rulePct = Number(elRulePct.value || 30) / 100;
+    const minDays = Number(elMinDays.value || 8);
+    const min50Days = Number(elMin50Days.value || 5);
+
+    const sorted = [...rows].sort(byDate);
+
+    let total = 0;
+    let maxDay = 0;
+    let maxDayDate = null;
+
+    const tradingDays = sorted.length;
+    const profit50Days = sorted.filter(r => Number(r.profit || 0) >= 50).length;
+
+    const enriched = sorted.map(r => {
+      total += Number(r.profit || 0);
+      const p = Number(r.profit || 0);
+      if (p > maxDay) { maxDay = p; maxDayDate = r.date; }
+      return { ...r, cum: total };
+    });
+
+    const maxPct = total > 0 ? (maxDay / total) : 0;
+    const allowedUnderTarget = rulePct * targetProfit;
+
+    const totalNeededToFix = (maxDay > 0 && rulePct > 0) ? (maxDay / rulePct) : 0;
+    const extraNeededToFix = Math.max(0, totalNeededToFix - total);
+
+    const conservativeCap = allowedUnderTarget; // cap based on target
+    const dynamicCapNow = rulePct * total;
+
+    const daysOK = tradingDays >= minDays;
+    const days50OK = profit50Days >= min50Days;
+    const profitOK = total >= targetProfit;
+    const consistencyOK_byTarget = maxDay <= allowedUnderTarget;
+
+    const eligible = daysOK && days50OK && profitOK && consistencyOK_byTarget;
+
+    return {
+      targetProfit, rulePct, minDays, min50Days,
+      enriched, total, maxDay, maxDayDate, maxPct,
+      allowedUnderTarget, conservativeCap, dynamicCapNow,
+      totalNeededToFix, extraNeededToFix,
+      tradingDays, profit50Days,
+      daysOK, days50OK, profitOK, consistencyOK_byTarget,
+      eligible
+    };
+  }
+
+  function statusPill(text, cls) {
+    return `<span class="pill ${cls}">${text}</span>`;
+  }
+
+  // ---------- Render ----------
+  function render() {
+    const c = compute();
+
+    kpiTotal.textContent = money(c.total);
+    kpiMaxDay.textContent = c.maxDayDate ? `${money(c.maxDay)} (${c.maxDayDate})` : money(0);
+    kpiPctEl.textContent = c.total > 0 ? pct(c.maxPct) : "0%";
+    kpiAllowed.textContent = money(c.allowedUnderTarget);
+
+    // progress bars
+    const daysPct = Math.min(100, (c.tradingDays / Math.max(1, c.minDays)) * 100);
+    const d50Pct = Math.min(100, (c.profit50Days / Math.max(1, c.min50Days)) * 100);
+    barDays.style.width = daysPct + "%";
+    bar50.style.width = d50Pct + "%";
+
+    // status pills
+    let statusHtml = "";
+    statusHtml += statusPill(`Trading Days：${c.tradingDays}/${c.minDays}`, c.daysOK ? "ok" : "warn");
+    statusHtml += " " + statusPill(`≥$50 Days：${c.profit50Days}/${c.min50Days}`, c.days50OK ? "ok" : "warn");
+    statusHtml += " " + statusPill(`Profit：${money(c.total)}/${money(c.targetProfit)}`, c.profitOK ? "ok" : "warn");
+    statusHtml += " " + statusPill(
+      `Consistency（以目標計）：Max ${money(c.maxDay)} ≤ ${money(c.allowedUnderTarget)}`,
+      c.consistencyOK_byTarget ? "ok" : "bad"
+    );
+
+    if (c.eligible) {
+      statusHtml += " " + statusPill("✅ 目前已符合出金門檻（以設定為準）", "ok");
+    } else {
+      statusHtml += " " + statusPill("未完全達標", "warn");
+    }
+    statusWrap.innerHTML = statusHtml;
+
+    // next steps
+    const capText = `
+      <div class="split">
+        <div><b>建議今日 Profit 上限（保守）：</b><br>${money(c.conservativeCap)}（= ${(c.rulePct*100).toFixed(1)}% × 目標 ${money(c.targetProfit)}）</div>
+        <div><b>即時提醒（以目前總 profit 計）：</b><br>${money(c.dynamicCapNow)}（= ${(c.rulePct*100).toFixed(1)}% × 目前 ${money(c.total)}）</div>
+      </div>
+    `;
+
+    let action = "";
+    if (c.total <= 0) {
+      action = `
+        <p><b>建議：</b>Total ≤ 0 期間先唔好追 profit。用細 size + 嚴格 SL，先做返正數。</p>
+      `;
+    } else if (!c.consistencyOK_byTarget) {
+      action = `
+        <p><b>Consistency 有風險：</b>你最大單日 ${money(c.maxDay)} 已經大過「目標下上限」${money(c.allowedUnderTarget)}。</p>
+        <ul>
+          <li>要令 ${money(c.maxDay)} 變成 ≤ ${(c.rulePct*100).toFixed(1)}%，你總 profit 至少要 ≥ <b>${money(c.totalNeededToFix)}</b></li>
+          <li>即係你要再分散地賺多約 <b>${money(c.extraNeededToFix)}</b>（避免再整出更大單日）</li>
+        </ul>
+      `;
+    } else {
+      const needProfit = Math.max(0, c.targetProfit - c.total);
+      const needDays = Math.max(0, c.minDays - c.tradingDays);
+      const need50 = Math.max(0, c.min50Days - c.profit50Days);
+
+      action = `
+        <p><b>下一步：</b></p>
+        <ul>
+          <li>仲差 Profit：<b>${money(needProfit)}</b></li>
+          <li>仲差 Trading Days：<b>${needDays} 日</b></li>
+          <li>仲差 ≥$50 Days：<b>${need50} 日</b></li>
+          <li>今日建議：做到 ${money(Math.min(c.conservativeCap, 400))}～${money(Math.min(c.conservativeCap, 500))} 就收工（最穩）</li>
+        </ul>
+      `;
+    }
+
+    nextSteps.innerHTML = `
+      ${capText}
+      <hr style="border:0;border-top:1px solid #22304e;margin:12px 0;opacity:.8">
+      ${action}
+    `;
+
+    // table with running max pct
+    let runningTotal = 0;
+    let runningMaxDay = 0;
+    const sorted = [...rows].sort(byDate);
+
+    elTBody.innerHTML = sorted.map(r => {
+      runningTotal += Number(r.profit || 0);
+      runningMaxDay = Math.max(runningMaxDay, Number(r.profit || 0));
+      const runningMaxPct = (runningTotal > 0) ? (runningMaxDay / runningTotal) : 0;
+      const cls = (runningTotal > 0 && runningMaxPct <= c.rulePct) ? "ok"
+                : (runningTotal > 0 && runningMaxPct > c.rulePct) ? "bad"
+                : "warn";
+
+      return `
+        <tr>
+          <td>${r.date}</td>
+          <td>${money(r.profit)}</td>
+          <td>${money(runningTotal)}</td>
+          <td><span class="pill ${cls}">${pct(runningMaxPct)}</span></td>
+          <td class="right">
+            <button class="ghost" data-edit="${r.date}">編輯</button>
+            <button class="ghost" data-del="${r.date}">刪除</button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    document.querySelectorAll("[data-edit]").forEach(btn => {
+      btn.onclick = () => startEdit(btn.getAttribute("data-edit"));
+    });
+    document.querySelectorAll("[data-del]").forEach(btn => {
+      btn.onclick = () => delRow(btn.getAttribute("data-del"));
+    });
+
+    saveRows(rows);
+  }
+
+  // ---------- Actions ----------
+  function upsertRow(date, profit) {
+    const p = Number(profit);
+    if (!date || !isFinite(p)) return;
+
+    const idx = rows.findIndex(r => r.date === date);
+    if (idx >= 0) rows[idx].profit = p;
+    else rows.push({ date, profit: p });
+
+    rows.sort(byDate);
+    render();
+  }
+
+  function startEdit(date) {
+    const r = rows.find(x => x.date === date);
+    if (!r) return;
+    editingDate = date;
+    elDate.value = r.date;
+    elProfit.value = r.profit;
+    document.getElementById("addBtn").textContent = "更新";
+  }
+
+  function clearEdit() {
+    editingDate = null;
+    document.getElementById("addBtn").textContent = "加入";
+    elProfit.value = "";
+  }
+
+  function delRow(date) {
+    rows = rows.filter(r => r.date !== date);
+    if (editingDate === date) clearEdit();
+    render();
+  }
+
+  // ---------- Events ----------
+  document.getElementById("addBtn").onclick = () => {
+    const d = elDate.value;
+    const p = elProfit.value;
+    if (!d) { alert("請先揀日期"); return; }
+    if (p === "" || !isFinite(Number(p))) { alert("請輸入有效 Profit（例如 220 或 -250）"); return; }
+    upsertRow(d, p);
+    clearEdit();
+  };
+
+  document.getElementById("cancelEditBtn").onclick = () => clearEdit();
+
+  document.getElementById("resetBtn").onclick = () => {
+    if (!confirm("確定清空全部紀錄？")) return;
+    rows = [];
+    clearEdit();
+    render();
+  };
+
+  document.getElementById("saveSettingsBtn").onclick = () => {
+    const s = {
+      targetProfit: Number(elTargetProfit.value || 2600),
+      rulePct: Number(elRulePct.value || 30),
+      minDays: Number(elMinDays.value || 8),
+      min50Days: Number(elMin50Days.value || 5)
+    };
+    saveSettings(s);
+    render();
+    alert("已儲存設定 ✅");
+  };
+
+  // live rerender
+  [elTargetProfit, elRulePct, elMinDays, elMin50Days].forEach(inp => {
+    inp.addEventListener("change", render);
+    inp.addEventListener("keyup", render);
+  });
+
+  // init
+  (function init(){
+    const s = loadSettings();
+    elTargetProfit.value = s.targetProfit;
+    elRulePct.value = s.rulePct;
+    elMinDays.value = s.minDays;
+    elMin50Days.value = s.min50Days;
+
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth()+1).padStart(2,"0");
+    const dd = String(today.getDate()).padStart(2,"0");
+    elDate.value = `${yyyy}-${mm}-${dd}`;
+
+    render();
+  })();
+</script>
+
+<!-- PWA Service Worker -->
+<script>
+  (function () {
+    const el = document.getElementById("pwaStatus");
+    if (!("serviceWorker" in navigator)) {
+      el.textContent = "（提示）此瀏覽器不支援離線快取。";
+      return;
+    }
+    navigator.serviceWorker.register("./sw.js")
+      .then(() => { el.textContent = "✅ 已啟用離線快取（PWA）。"; })
+      .catch(() => { el.textContent = "⚠️ 無法註冊離線快取（檢查 sw.js / 需用 https 或 localhost）。"; });
+  })();
+</script>
+
+</body>
+</html>
