@@ -3,73 +3,575 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>APEX PA Tracker（Firebase 同步）</title>
+  <title>APEX PA Tracker（Firebase 同步版）</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0b0f17">
 
   <style>
-    body{margin:0;background:#0b0f17;color:#e8eefc;font-family:system-ui,-apple-system,Segoe UI,Roboto}
-    .wrap{max-width:980px;margin:auto;padding:18px}
-    h1{font-size:20px;margin:0 0 10px}
-    .card{background:#111a2b;border:1px solid #223046;border-radius:14px;padding:14px;margin-bottom:12px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    input,button{background:#0b1322;border:1px solid #2a3a60;color:#e8eefc;border-radius:10px;padding:10px;font-size:14px}
-    button.primary{background:#246bff;border-color:#246bff}
-    button.danger{background:#ff2d55;border-color:#ff2d55}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{border-bottom:1px solid #223046;padding:6px;text-align:left}
-    .right{text-align:right}
-    .muted{opacity:.7;font-size:12px}
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", Arial; }
+    body { margin: 0; background: #0b0f17; color: #e8eefc; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 860px){ .grid { grid-template-columns: 1.1fr .9fr; } }
+    .card { background: #111a2b; border: 1px solid #22304e; border-radius: 14px; padding: 14px; box-shadow: 0 10px 20px rgba(0,0,0,.25); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+    label { font-size: 12px; opacity: .9; display: block; margin-bottom: 6px; }
+    input, button {
+      background: #0b1322; border: 1px solid #2a3a60; color: #e8eefc;
+      border-radius: 10px; padding: 10px 10px; font-size: 14px; outline: none;
+    }
+    input:focus { border-color: #4b7bff; }
+    button { cursor: pointer; border-color: #3a5290; }
+    button.primary { background: #2446ff; border-color: #2446ff; }
+    button.danger { background: #ff2d55; border-color: #ff2d55; }
+    button.ghost { background: transparent; }
+    .kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .kpi .box { background: #0b1322; border: 1px solid #22304e; border-radius: 12px; padding: 10px; }
+    .kpi .val { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .muted { opacity: .8; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #22304e; font-size: 13px; }
+    th { text-align: left; font-size: 12px; opacity: .85; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #22304e; background: #0b1322;}
+    .ok { border-color: #2ecc71; }
+    .warn { border-color: #f1c40f; }
+    .bad { border-color: #ff3b30; }
+    .hint { line-height: 1.55; font-size: 13px; }
+    .split { display:flex; gap:10px; flex-wrap:wrap; }
+    .split > div { flex: 1 1 180px; }
+    .right { text-align: right; }
+    .progress { height: 10px; background:#0b1322; border:1px solid #22304e; border-radius:999px; overflow:hidden; }
+    .bar { height:100%; background:#2446ff; width:0%; }
+    .bar2 { height:100%; background:#2ecc71; width:0%; }
+    .mini { margin-top:8px; }
+    .topline { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items: baseline; }
+    .small { font-size: 12px; opacity: .85; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; padding:2px 6px; border:1px solid #22304e; border-radius:8px; background:#0b1322; }
+    .statusline { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
   </style>
 </head>
+
 <body>
-<div class="wrap">
-  <h1>APEX PA Tracker（30% 規則 + 8 / 5 日）</h1>
-
-  <!-- 登入卡 -->
-  <div class="card" id="authCard">
-    <div class="row">
-      <button id="btnLogin" class="primary">用 Google 登入</button>
-      <button id="btnLogout" class="danger" style="display:none">登出</button>
-      <span id="userInfo" class="muted"></span>
+  <div class="wrap">
+    <div class="topline">
+      <h1>APEX PA Tracker（30% 規則 + 8日/5日進度）</h1>
+      <div class="small">提示：用 <span class="kbd">+300</span> / <span class="kbd">-250</span> 記錄每日淨 profit</div>
     </div>
+
+    <!-- Auth / Cloud status -->
+    <div class="card" style="margin-bottom:12px;">
+      <div class="statusline">
+        <div>
+          <div class="muted">雲端同步狀態</div>
+          <div id="cloudText" style="margin-top:4px;">未登入（本機模式）</div>
+          <div class="muted" id="cloudHint" style="margin-top:4px;"></div>
+        </div>
+        <div class="row">
+          <button class="primary" id="btnLogin">用 Google 登入</button>
+          <button class="danger" id="btnLogout" style="display:none;">登出</button>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:10px;">
+        ✅ 登入後：手機/電腦同一個 Google 帳號會自動同步同一份數據。
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Input / Settings -->
+      <div class="card">
+        <div class="row">
+          <div>
+            <label>日期</label>
+            <input id="date" type="date" />
+          </div>
+          <div>
+            <label>當日淨 Profit（可正可負，例如 250 / -180）</label>
+            <input id="profit" type="number" step="0.01" placeholder="例如 220 或 -250" />
+          </div>
+          <div>
+            <button class="primary" id="addBtn">加入</button>
+          </div>
+          <div>
+            <button class="ghost" id="cancelEditBtn">取消編輯</button>
+          </div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid #22304e;margin:14px 0;opacity:.8">
+
+        <div class="row">
+          <div>
+            <label>目標總 Profit（50K PA 常用 2600）</label>
+            <input id="targetProfit" type="number" step="1" value="2600" />
+          </div>
+          <div>
+            <label>Consistency 上限（%）</label>
+            <input id="rulePct" type="number" step="0.1" value="30" />
+          </div>
+          <div>
+            <label>Minimum Trading Days（通常 8）</label>
+            <input id="minDays" type="number" step="1" value="8" />
+          </div>
+          <div>
+            <label>≥$50 Profit Days（通常 5）</label>
+            <input id="min50Days" type="number" step="1" value="5" />
+          </div>
+          <div>
+            <button id="saveSettingsBtn">儲存設定</button>
+          </div>
+        </div>
+
+        <p class="muted" style="margin:10px 0 0;">
+          ✅ 登入後會以雲端為準；未登入就只存在本機。
+        </p>
+        <div class="muted" id="pwaStatus" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- KPIs / Guidance -->
+      <div class="card">
+        <div class="kpi">
+          <div class="box">
+            <div class="muted">累計 Profit</div>
+            <div class="val" id="kpiTotal">$0</div>
+          </div>
+          <div class="box">
+            <div class="muted">最大單日 Profit</div>
+            <div class="val" id="kpiMaxDay">$0</div>
+          </div>
+          <div class="box">
+            <div class="muted">最大單日佔比（Max / Total）</div>
+            <div class="val" id="kpiPct">0%</div>
+          </div>
+          <div class="box">
+            <div class="muted">目標下可容許最大單日</div>
+            <div class="val" id="kpiAllowed">$0</div>
+          </div>
+        </div>
+
+        <div class="mini">
+          <div class="muted">Trading Days 進度</div>
+          <div class="progress"><div class="bar" id="barDays"></div></div>
+          <div class="muted" style="margin-top:6px;">≥$50 Days 進度</div>
+          <div class="progress"><div class="bar2" id="bar50"></div></div>
+        </div>
+
+        <div style="margin-top:12px;" id="statusWrap"></div>
+        <hr style="border:0;border-top:1px solid #22304e;margin:14px 0;opacity:.8">
+        <div class="hint" id="nextSteps"></div>
+      </div>
+    </div>
+
+    <!-- Records -->
+    <div class="card" style="margin-top:12px;">
+      <div class="row" style="justify-content: space-between;">
+        <div class="muted">紀錄（可編輯/刪除）</div>
+        <div class="row"><button class="danger" id="resetBtn">清空全部</button></div>
+      </div>
+
+      <div style="overflow:auto; margin-top:8px;">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width:120px;">日期</th>
+              <th>當日 Profit</th>
+              <th>累計 Profit</th>
+              <th>最大日佔比（跑緊）</th>
+              <th class="right">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:12px;">
+      ⚠️ 雲端同步版會跟你登入嘅 Google 帳號走。想共用就用同一個 Google 登入。
+    </p>
   </div>
 
-  <!-- 輸入 -->
-  <div class="card">
-    <div class="row">
-      <input type="date" id="date">
-      <input type="number" id="profit" placeholder="當日 Profit（可負）">
-      <button id="add" class="primary">加入</button>
-    </div>
-  </div>
+<script>
+  // ---------- Utilities ----------
+  const money = (n) => {
+    const x = Number(n || 0);
+    const sign = x < 0 ? "-" : "";
+    const abs = Math.abs(x);
+    return sign + "$" + abs.toLocaleString(undefined, {maximumFractionDigits: 2});
+  };
+  const pct = (n) => (isFinite(n) ? (n*100).toFixed(1) + "%" : "0%");
+  const byDate = (a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
 
-  <!-- 狀態 -->
-  <div class="card">
-    <div class="row">
-      <div>累計 Profit：<b id="total">$0</b></div>
-      <div>最大單日：<b id="maxDay">$0</b></div>
-      <div>最大佔比：<b id="ratio">0%</b></div>
-    </div>
-  </div>
+  // local fallback
+  const KEY = "apex_pa_rows_local_fallback_v1";
+  const SETTINGS_KEY = "apex_pa_settings_local_fallback_v1";
+  const loadRowsLocal = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
+  const saveRowsLocal = (r) => localStorage.setItem(KEY, JSON.stringify(r));
+  const loadSettingsLocal = () => {
+    try {
+      return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { targetProfit:2600, rulePct:30, minDays:8, min50Days:5 };
+    } catch {
+      return { targetProfit:2600, rulePct:30, minDays:8, min50Days:5 };
+    }
+  };
+  const saveSettingsLocal = (s) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 
-  <!-- 表格 -->
-  <div class="card">
-    <table>
-      <thead>
+  // ---------- State ----------
+  let rows = loadRowsLocal();
+  let editingDate = null;
+
+  // cloud state + api（會喺下面 firebase script 注入）
+  const cloud = {
+    enabled: false,
+    uid: null,
+    api: null,
+    unsubscribe: null
+  };
+  window.__cloud = cloud; // 俾 module script 用
+
+  // ---------- Elements ----------
+  const elDate = document.getElementById("date");
+  const elProfit = document.getElementById("profit");
+  const elTBody = document.getElementById("tbody");
+
+  const elTargetProfit = document.getElementById("targetProfit");
+  const elRulePct = document.getElementById("rulePct");
+  const elMinDays = document.getElementById("minDays");
+  const elMin50Days = document.getElementById("min50Days");
+
+  const kpiTotal = document.getElementById("kpiTotal");
+  const kpiMaxDay = document.getElementById("kpiMaxDay");
+  const kpiPctEl = document.getElementById("kpiPct");
+  const kpiAllowed = document.getElementById("kpiAllowed");
+
+  const statusWrap = document.getElementById("statusWrap");
+  const nextSteps = document.getElementById("nextSteps");
+
+  const barDays = document.getElementById("barDays");
+  const bar50 = document.getElementById("bar50");
+  const pwaStatus = document.getElementById("pwaStatus");
+
+  const cloudText = document.getElementById("cloudText");
+  const cloudHint = document.getElementById("cloudHint");
+
+  function setCloudStatus(line1, line2="") {
+    cloudText.textContent = line1;
+    cloudHint.textContent = line2;
+  }
+
+  function getSettingsObj() {
+    return {
+      targetProfit: Number(elTargetProfit.value || 2600),
+      rulePct: Number(elRulePct.value || 30),
+      minDays: Number(elMinDays.value || 8),
+      min50Days: Number(elMin50Days.value || 5)
+    };
+  }
+  function applySettings(s) {
+    elTargetProfit.value = Number(s?.targetProfit ?? 2600);
+    elRulePct.value = Number(s?.rulePct ?? 30);
+    elMinDays.value = Number(s?.minDays ?? 8);
+    elMin50Days.value = Number(s?.min50Days ?? 5);
+  }
+
+  // ---------- Cloud save / load ----------
+  let saveTimer = null;
+
+  async function saveToCloudNow() {
+    // always mirror local fallback
+    saveRowsLocal(rows);
+    saveSettingsLocal(getSettingsObj());
+
+    if (!cloud.enabled || !cloud.api || !cloud.uid) return;
+
+    const { db, doc, setDoc, serverTimestamp } = cloud.api;
+    const ref = doc(db, "users", cloud.uid);
+    await setDoc(ref, {
+      rows,
+      settings: getSettingsObj(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  }
+
+  function scheduleCloudSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        if (cloud.enabled) setCloudStatus("已登入（同步中…）", "正在把最新數據寫入雲端");
+        await saveToCloudNow();
+        if (cloud.enabled) setCloudStatus("已登入（已同步 ✅）", "手機/電腦會自動共用同一份數據");
+      } catch (e) {
+        if (cloud.enabled) setCloudStatus("已登入（同步失敗 ⚠️）", String(e?.message || e));
+      }
+    }, 250);
+  }
+
+  window.startCloudListener = (uid) => {
+    if (!cloud.api) return;
+    const { db, doc, onSnapshot } = cloud.api;
+
+    if (cloud.unsubscribe) cloud.unsubscribe();
+    const ref = doc(db, "users", uid);
+
+    cloud.unsubscribe = onSnapshot(ref, (snap) => {
+      const data = snap.data();
+      if (!data) {
+        // 第一次：種入本機資料到雲端
+        scheduleCloudSave();
+        return;
+      }
+
+      rows = Array.isArray(data.rows) ? data.rows : [];
+      if (data.settings) applySettings(data.settings);
+
+      saveRowsLocal(rows);
+      if (data.settings) saveSettingsLocal(data.settings);
+
+      render(false);
+      setCloudStatus("已登入（已同步 ✅）", "手機/電腦會自動共用同一份數據");
+    }, (err) => {
+      setCloudStatus("已登入（讀取雲端失敗 ⚠️）", String(err?.message || err));
+    });
+  };
+
+  window.stopCloudListener = () => {
+    if (cloud.unsubscribe) cloud.unsubscribe();
+    cloud.unsubscribe = null;
+  };
+
+  // ---------- Calculations ----------
+  function compute() {
+    const targetProfit = Number(elTargetProfit.value || 2600);
+    const rulePct = Number(elRulePct.value || 30) / 100;
+    const minDays = Number(elMinDays.value || 8);
+    const min50Days = Number(elMin50Days.value || 5);
+
+    const sorted = [...rows].sort(byDate);
+
+    let total = 0;
+    let maxDay = 0;
+    let maxDayDate = null;
+
+    const tradingDays = sorted.length;
+    const profit50Days = sorted.filter(r => Number(r.profit || 0) >= 50).length;
+
+    sorted.forEach(r => {
+      total += Number(r.profit || 0);
+      const p = Number(r.profit || 0);
+      if (p > maxDay) { maxDay = p; maxDayDate = r.date; }
+    });
+
+    const maxPct = total > 0 ? (maxDay / total) : 0;
+    const allowedUnderTarget = rulePct * targetProfit;
+
+    const totalNeededToFix = (maxDay > 0 && rulePct > 0) ? (maxDay / rulePct) : 0;
+    const extraNeededToFix = Math.max(0, totalNeededToFix - total);
+
+    const conservativeCap = allowedUnderTarget;
+    const dynamicCapNow = rulePct * total;
+
+    const daysOK = tradingDays >= minDays;
+    const days50OK = profit50Days >= min50Days;
+    const profitOK = total >= targetProfit;
+    const consistencyOK_byTarget = maxDay <= allowedUnderTarget;
+
+    const eligible = daysOK && days50OK && profitOK && consistencyOK_byTarget;
+
+    return {
+      targetProfit, rulePct, minDays, min50Days,
+      total, maxDay, maxDayDate, maxPct,
+      allowedUnderTarget, conservativeCap, dynamicCapNow,
+      totalNeededToFix, extraNeededToFix,
+      tradingDays, profit50Days,
+      daysOK, days50OK, profitOK, consistencyOK_byTarget,
+      eligible
+    };
+  }
+
+  function statusPill(text, cls) { return `<span class="pill ${cls}">${text}</span>`; }
+
+  // ---------- Render ----------
+  function render(shouldSave=true) {
+    const c = compute();
+
+    kpiTotal.textContent = money(c.total);
+    kpiMaxDay.textContent = c.maxDayDate ? `${money(c.maxDay)} (${c.maxDayDate})` : money(0);
+    kpiPctEl.textContent = c.total > 0 ? pct(c.maxPct) : "0%";
+    kpiAllowed.textContent = money(c.allowedUnderTarget);
+
+    barDays.style.width = Math.min(100, (c.tradingDays / Math.max(1, c.minDays)) * 100) + "%";
+    bar50.style.width  = Math.min(100, (c.profit50Days / Math.max(1, c.min50Days)) * 100) + "%";
+
+    let statusHtml = "";
+    statusHtml += statusPill(`Trading Days：${c.tradingDays}/${c.minDays}`, c.daysOK ? "ok" : "warn");
+    statusHtml += " " + statusPill(`≥$50 Days：${c.profit50Days}/${c.min50Days}`, c.days50OK ? "ok" : "warn");
+    statusHtml += " " + statusPill(`Profit：${money(c.total)}/${money(c.targetProfit)}`, c.profitOK ? "ok" : "warn");
+    statusHtml += " " + statusPill(
+      `Consistency（以目標計）：Max ${money(c.maxDay)} ≤ ${money(c.allowedUnderTarget)}`,
+      c.consistencyOK_byTarget ? "ok" : "bad"
+    );
+    statusHtml += " " + statusPill(c.eligible ? "符合條件 ✅" : "未完全達標", c.eligible ? "ok" : "warn");
+    statusWrap.innerHTML = statusHtml;
+
+    const capText = `
+      <div class="split">
+        <div><b>建議今日 Profit 上限（保守）：</b><br>${money(c.conservativeCap)}（= ${(c.rulePct*100).toFixed(1)}% × 目標 ${money(c.targetProfit)}）</div>
+        <div><b>即時提醒（以目前總 profit 計）：</b><br>${money(c.dynamicCapNow)}（= ${(c.rulePct*100).toFixed(1)}% × 目前 ${money(c.total)}）</div>
+      </div>
+    `;
+
+    let action = "";
+    if (c.total <= 0) {
+      action = `<p><b>建議：</b>Total ≤ 0 期間先唔好追 profit。用細 size + 嚴格 SL，先做返正數。</p>`;
+    } else if (!c.consistencyOK_byTarget) {
+      action = `
+        <p><b>Consistency 有風險：</b>你最大單日 ${money(c.maxDay)} 已經大過「目標下上限」${money(c.allowedUnderTarget)}。</p>
+        <ul>
+          <li>要令 ${money(c.maxDay)} 變成 ≤ ${(c.rulePct*100).toFixed(1)}%，你總 profit 至少要 ≥ <b>${money(c.totalNeededToFix)}</b></li>
+          <li>即係你要再分散地賺多約 <b>${money(c.extraNeededToFix)}</b>（避免再整出更大單日）</li>
+        </ul>
+      `;
+    } else {
+      const needProfit = Math.max(0, c.targetProfit - c.total);
+      const needDays = Math.max(0, c.minDays - c.tradingDays);
+      const need50 = Math.max(0, c.min50Days - c.profit50Days);
+      action = `
+        <p><b>下一步：</b></p>
+        <ul>
+          <li>仲差 Profit：<b>${money(needProfit)}</b></li>
+          <li>仲差 Trading Days：<b>${needDays} 日</b></li>
+          <li>仲差 ≥$50 Days：<b>${need50} 日</b></li>
+        </ul>
+      `;
+    }
+
+    nextSteps.innerHTML = `${capText}<hr style="border:0;border-top:1px solid #22304e;margin:12px 0;opacity:.8">${action}`;
+
+    // table
+    let runningTotal = 0;
+    let runningMaxDay = 0;
+    const sorted = [...rows].sort(byDate);
+    const rulePct = Number(elRulePct.value || 30) / 100;
+
+    elTBody.innerHTML = sorted.map(r => {
+      runningTotal += Number(r.profit || 0);
+      runningMaxDay = Math.max(runningMaxDay, Number(r.profit || 0));
+      const runningMaxPct = (runningTotal > 0) ? (runningMaxDay / runningTotal) : 0;
+      const cls = (runningTotal > 0 && runningMaxPct <= rulePct) ? "ok"
+                : (runningTotal > 0 && runningMaxPct > rulePct) ? "bad"
+                : "warn";
+
+      return `
         <tr>
-          <th>日期</th>
-          <th class="right">當日</th>
-          <th class="right">累計</th>
+          <td>${r.date}</td>
+          <td>${money(r.profit)}</td>
+          <td>${money(runningTotal)}</td>
+          <td><span class="pill ${cls}">${pct(runningMaxPct)}</span></td>
+          <td class="right">
+            <button class="ghost" data-edit="${r.date}">編輯</button>
+            <button class="ghost" data-del="${r.date}">刪除</button>
+          </td>
         </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </div>
-</div>
+      `;
+    }).join("");
 
+    document.querySelectorAll("[data-edit]").forEach(btn => btn.onclick = () => startEdit(btn.getAttribute("data-edit")));
+    document.querySelectorAll("[data-del]").forEach(btn => btn.onclick = () => delRow(btn.getAttribute("data-del")));
+
+    if (shouldSave) scheduleCloudSave();
+  }
+
+  // ---------- Actions ----------
+  function upsertRow(date, profit) {
+    const p = Number(profit);
+    if (!date || !isFinite(p)) return;
+    const idx = rows.findIndex(r => r.date === date);
+    if (idx >= 0) rows[idx].profit = p;
+    else rows.push({ date, profit: p });
+    rows.sort(byDate);
+    render(true);
+  }
+
+  function startEdit(date) {
+    const r = rows.find(x => x.date === date);
+    if (!r) return;
+    editingDate = date;
+    elDate.value = r.date;
+    elProfit.value = r.profit;
+    document.getElementById("addBtn").textContent = "更新";
+  }
+
+  function clearEdit() {
+    editingDate = null;
+    document.getElementById("addBtn").textContent = "加入";
+    elProfit.value = "";
+  }
+
+  function delRow(date) {
+    rows = rows.filter(r => r.date !== date);
+    if (editingDate === date) clearEdit();
+    render(true);
+  }
+
+  // ---------- UI events ----------
+  document.getElementById("addBtn").onclick = () => {
+    const d = elDate.value;
+    const p = elProfit.value;
+    if (!d) { alert("請先揀日期"); return; }
+    if (p === "" || !isFinite(Number(p))) { alert("請輸入有效 Profit（例如 220 或 -250）"); return; }
+    upsertRow(d, p);
+    clearEdit();
+  };
+
+  document.getElementById("cancelEditBtn").onclick = () => clearEdit();
+
+  document.getElementById("resetBtn").onclick = () => {
+    if (!confirm("確定清空全部紀錄？")) return;
+    rows = [];
+    clearEdit();
+    render(true);
+  };
+
+  document.getElementById("saveSettingsBtn").onclick = () => {
+    saveSettingsLocal(getSettingsObj());
+    render(true);
+    alert("已儲存設定 ✅");
+  };
+
+  [elTargetProfit, elRulePct, elMinDays, elMin50Days].forEach(inp => {
+    inp.addEventListener("change", () => render(true));
+    inp.addEventListener("keyup",  () => render(true));
+  });
+
+  // init date + load settings local
+  (function init(){
+    const s = loadSettingsLocal();
+    applySettings(s);
+
+    const today = new Date();
+    elDate.value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+    render(false);
+    setCloudStatus("未登入（本機模式）", "按右邊『用 Google 登入』即可跨裝置同步");
+  })();
+
+  // ---------- PWA SW ----------
+  (function () {
+    if (!("serviceWorker" in navigator)) {
+      pwaStatus.textContent = "（提示）此瀏覽器不支援離線快取。";
+      return;
+    }
+    navigator.serviceWorker.register("./sw.js")
+      .then(() => { pwaStatus.textContent = "✅ 已啟用離線快取（PWA）。"; })
+      .catch(() => { pwaStatus.textContent = "⚠️ 無法註冊離線快取（需用 https 或 localhost）。"; });
+  })();
+</script>
+
+<!-- Firebase (Modular SDK via CDN) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyD0Yhl5BEfuD-Aldk__pQwC_0B6SmKEdIE",
@@ -81,104 +583,49 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
-  const provider = new GoogleAuthProvider();
 
-  // UI
+  // inject api into main script
+  window.__cloud.api = { db, doc, setDoc, onSnapshot, serverTimestamp };
+
   const btnLogin = document.getElementById("btnLogin");
   const btnLogout = document.getElementById("btnLogout");
-  const userInfo = document.getElementById("userInfo");
-  const rowsEl = document.getElementById("rows");
-  const totalEl = document.getElementById("total");
-  const maxDayEl = document.getElementById("maxDay");
-  const ratioEl = document.getElementById("ratio");
-
-  const dateEl = document.getElementById("date");
-  const profitEl = document.getElementById("profit");
-  const addBtn = document.getElementById("add");
 
   btnLogin.onclick = async () => {
-    try { await signInWithPopup(auth, provider); }
-    catch(e){ alert("登入失敗：" + (e?.message || e)); }
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      alert("登入失敗：" + (e?.message || e));
+    }
   };
-  btnLogout.onclick = async () => { try { await signOut(auth); } catch(e){} };
 
-  let unsub = null;
+  btnLogout.onclick = async () => {
+    try { await signOut(auth); } catch (e) {}
+  };
 
-  onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, async (user) => {
     if (!user) {
-      btnLogin.style.display = "";
+      window.__cloud.enabled = false;
+      window.__cloud.uid = null;
       btnLogout.style.display = "none";
-      userInfo.textContent = "未登入";
-      rowsEl.innerHTML = "";
-      totalEl.textContent = "$0";
-      maxDayEl.textContent = "$0";
-      ratioEl.textContent = "0%";
+      btnLogin.style.display = "";
+      if (window.stopCloudListener) window.stopCloudListener();
+      document.getElementById("cloudText").textContent = "未登入（本機模式）";
+      document.getElementById("cloudHint").textContent = "按『用 Google 登入』即可跨裝置同步";
       return;
     }
 
-    btnLogin.style.display = "none";
+    window.__cloud.enabled = true;
+    window.__cloud.uid = user.uid;
+
     btnLogout.style.display = "";
-    userInfo.textContent = user.email || "";
+    btnLogin.style.display = "none";
+    document.getElementById("cloudText").textContent = "已登入（啟動同步中…）";
+    document.getElementById("cloudHint").textContent = user.email || "Google 帳號";
 
-    const userRef = doc(db, "users", user.uid);
-
-    // realtime sync
-    if (unsub) unsub();
-    unsub = onSnapshot(userRef, (snap) => {
-      const list = snap.exists() ? (snap.data().records || []) : [];
-      render(list);
-    }, (err) => {
-      alert("讀取雲端失敗：" + (err?.message || err));
-    });
-
-    // write
-    addBtn.onclick = async () => {
-      try {
-        const d = dateEl.value;
-        const p = Number(profitEl.value);
-        if (!d) return alert("請先揀日期");
-        if (!isFinite(p)) return alert("請輸入有效 Profit（例如 220 或 -250）");
-
-        const snap = await getDoc(userRef);
-        const list = snap.exists() ? (snap.data().records || []) : [];
-
-        // 同一日期：更新；否則新增
-        const idx = list.findIndex(x => x.d === d);
-        if (idx >= 0) list[idx] = { ...list[idx], d, p, t: Date.now() };
-        else list.push({ d, p, t: Date.now() });
-
-        // 只更新 records + updated（用 merge 防止覆蓋其他欄位）
-        await setDoc(userRef, { records: list, updated: serverTimestamp() }, { merge: true });
-
-        profitEl.value = "";
-      } catch (e) {
-        alert("寫入失敗：" + (e?.message || e));
-        console.error(e);
-      }
-    };
+    if (window.startCloudListener) window.startCloudListener(user.uid);
   });
-
-  function render(list) {
-    rowsEl.innerHTML = "";
-    let total = 0;
-    let maxDay = 0;
-
-    // 排序（按日期）
-    const sorted = [...list].sort((a,b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
-
-    for (const r of sorted) {
-      total += Number(r.p || 0);
-      maxDay = Math.max(maxDay, Number(r.p || 0));
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${r.d}</td><td class="right">${r.p}</td><td class="right">${total}</td>`;
-      rowsEl.appendChild(tr);
-    }
-
-    totalEl.textContent = "$" + total;
-    maxDayEl.textContent = "$" + maxDay;
-    ratioEl.textContent = total > 0 ? ((maxDay / total) * 100).toFixed(1) + "%" : "0%";
-  }
 </script>
+
 </body>
 </html>
-
