@@ -67,10 +67,9 @@
 </div>
 
 <script type="module">
-  // ===== Firebase =====
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyD0Yhl5BEfuD-Aldk__pQwC_0B6SmKEdIE",
@@ -84,66 +83,96 @@
   const db = getFirestore(app);
   const provider = new GoogleAuthProvider();
 
-  // ===== UI =====
+  // UI
   const btnLogin = document.getElementById("btnLogin");
   const btnLogout = document.getElementById("btnLogout");
   const userInfo = document.getElementById("userInfo");
-  const rows = document.getElementById("rows");
+  const rowsEl = document.getElementById("rows");
   const totalEl = document.getElementById("total");
   const maxDayEl = document.getElementById("maxDay");
   const ratioEl = document.getElementById("ratio");
 
-  btnLogin.onclick = () => signInWithPopup(auth, provider);
-  btnLogout.onclick = () => signOut(auth);
+  const dateEl = document.getElementById("date");
+  const profitEl = document.getElementById("profit");
+  const addBtn = document.getElementById("add");
+
+  btnLogin.onclick = async () => {
+    try { await signInWithPopup(auth, provider); }
+    catch(e){ alert("登入失敗：" + (e?.message || e)); }
+  };
+  btnLogout.onclick = async () => { try { await signOut(auth); } catch(e){} };
 
   let unsub = null;
 
-  onAuthStateChanged(auth, user => {
+  onAuthStateChanged(auth, (user) => {
     if (!user) {
       btnLogin.style.display = "";
       btnLogout.style.display = "none";
       userInfo.textContent = "未登入";
-      rows.innerHTML = "";
+      rowsEl.innerHTML = "";
       totalEl.textContent = "$0";
+      maxDayEl.textContent = "$0";
+      ratioEl.textContent = "0%";
       return;
     }
 
     btnLogin.style.display = "none";
     btnLogout.style.display = "";
-    userInfo.textContent = user.email;
+    userInfo.textContent = user.email || "";
 
-    const ref = doc(db, "users", user.uid);
+    const userRef = doc(db, "users", user.uid);
+
+    // realtime sync
     if (unsub) unsub();
-    unsub = onSnapshot(ref, snap => {
-      const data = snap.exists() ? snap.data().records || [] : [];
-      render(data);
+    unsub = onSnapshot(userRef, (snap) => {
+      const list = snap.exists() ? (snap.data().records || []) : [];
+      render(list);
+    }, (err) => {
+      alert("讀取雲端失敗：" + (err?.message || err));
     });
 
-    document.getElementById("add").onclick = async () => {
-      const d = document.getElementById("date").value;
-      const p = Number(document.getElementById("profit").value);
-      if (!d || isNaN(p)) return;
+    // write
+    addBtn.onclick = async () => {
+      try {
+        const d = dateEl.value;
+        const p = Number(profitEl.value);
+        if (!d) return alert("請先揀日期");
+        if (!isFinite(p)) return alert("請輸入有效 Profit（例如 220 或 -250）");
 
-      const snap = await ref.get();
-      const list = snap.exists() ? snap.data().records || [] : [];
-      list.push({ d, p, t: Date.now() });
+        const snap = await getDoc(userRef);
+        const list = snap.exists() ? (snap.data().records || []) : [];
 
-      await setDoc(ref, { records: list, updated: serverTimestamp() });
+        // 同一日期：更新；否則新增
+        const idx = list.findIndex(x => x.d === d);
+        if (idx >= 0) list[idx] = { ...list[idx], d, p, t: Date.now() };
+        else list.push({ d, p, t: Date.now() });
+
+        // 只更新 records + updated（用 merge 防止覆蓋其他欄位）
+        await setDoc(userRef, { records: list, updated: serverTimestamp() }, { merge: true });
+
+        profitEl.value = "";
+      } catch (e) {
+        alert("寫入失敗：" + (e?.message || e));
+        console.error(e);
+      }
     };
   });
 
   function render(list) {
-    rows.innerHTML = "";
+    rowsEl.innerHTML = "";
     let total = 0;
     let maxDay = 0;
 
-    list.forEach(r => {
-      total += r.p;
-      maxDay = Math.max(maxDay, r.p);
+    // 排序（按日期）
+    const sorted = [...list].sort((a,b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+
+    for (const r of sorted) {
+      total += Number(r.p || 0);
+      maxDay = Math.max(maxDay, Number(r.p || 0));
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${r.d}</td><td class="right">${r.p}</td><td class="right">${total}</td>`;
-      rows.appendChild(tr);
-    });
+      rowsEl.appendChild(tr);
+    }
 
     totalEl.textContent = "$" + total;
     maxDayEl.textContent = "$" + maxDay;
@@ -152,3 +181,4 @@
 </script>
 </body>
 </html>
+
